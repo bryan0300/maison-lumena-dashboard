@@ -189,9 +189,65 @@ tr:hover td{background:var(--bg)}
   .container{padding:14px}
   .drawer{width:100vw}
 }
+
+/* ── AUTH ───────────────────────────────────────────── */
+#authWall{position:fixed;inset:0;z-index:9999;
+  background:linear-gradient(135deg,#2d0a6e 0%,#4A0E8F 50%,#1a0550 100%);
+  display:flex;align-items:center;justify-content:center;padding:20px}
+.auth-box{background:#fff;border-radius:20px;padding:40px 36px;width:100%;max-width:380px;
+  box-shadow:0 24px 64px rgba(0,0,0,.35)}
+.auth-logo{width:60px;height:60px;border-radius:50%;background:#F9A825;
+  display:flex;align-items:center;justify-content:center;
+  font-size:20px;font-weight:800;color:#4A0E8F;margin:0 auto 16px}
+.auth-title{font-size:22px;font-weight:700;text-align:center;color:#1a1a2e;margin-bottom:4px}
+.auth-sub{font-size:13px;color:#6b6b8a;text-align:center;margin-bottom:28px}
+.auth-field{margin-bottom:16px}
+.auth-field label{display:block;font-size:12px;font-weight:600;color:#6b6b8a;
+  text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+.auth-field input{width:100%;padding:12px 14px;font-size:14px;
+  border:1.5px solid #e8e4f0;border-radius:10px;outline:none;
+  background:#F8F7FC;color:#1a1a2e;transition:border .2s}
+.auth-field input:focus{border-color:#4A0E8F;background:#fff}
+.auth-btn{width:100%;padding:13px;background:#4A0E8F;color:#fff;
+  border:none;border-radius:10px;font-size:15px;font-weight:700;
+  cursor:pointer;margin-top:8px;transition:background .2s;letter-spacing:.3px}
+.auth-btn:hover{background:#3d0b78}
+.auth-error{background:#fee2e2;color:#991b1b;border:1px solid #fecaca;
+  border-radius:8px;padding:10px 14px;font-size:13px;margin-top:12px;
+  display:none;text-align:center}
+.auth-error.show{display:block}
+.auth-footer{text-align:center;margin-top:20px;font-size:11px;color:#9ca3af}
+.auth-lock{font-size:32px;text-align:center;margin-bottom:12px}
+#appContent{display:none}
 </style>
 </head>
 <body>
+
+<!-- AUTH WALL -->
+<div id="authWall">
+  <div class="auth-box">
+    <div class="auth-lock">🔐</div>
+    <div class="auth-logo">ML</div>
+    <div class="auth-title">Maison Lumena</div>
+    <div class="auth-sub">Connectez-vous pour accéder au dashboard</div>
+    <div class="auth-field">
+      <label>Identifiant</label>
+      <input type="text" id="authUser" placeholder="Entrez votre identifiant"
+        onkeydown="if(event.key==='Enter')document.getElementById('authPass').focus()"/>
+    </div>
+    <div class="auth-field">
+      <label>Mot de passe</label>
+      <input type="password" id="authPass" placeholder="Entrez votre mot de passe"
+        onkeydown="if(event.key==='Enter')checkAuth()"/>
+    </div>
+    <button class="auth-btn" onclick="checkAuth()">Se connecter</button>
+    <div class="auth-error" id="authError">Identifiant ou mot de passe incorrect</div>
+    <div class="auth-footer">Maison Lumena &copy; 2025 — Accès sécurisé</div>
+  </div>
+</div>
+
+<!-- APP CONTENT -->
+<div id="appContent">
 
 <div class="topbar">
   <div class="brand">
@@ -881,6 +937,36 @@ setTimeout(()=>loadData(),400);
   </div>
   <div class="drawer-body" id="drawerBody"></div>
 </div>
+
+</div>
+<script>
+function checkAuth(){
+  const u=document.getElementById('authUser').value.trim();
+  const p=document.getElementById('authPass').value;
+  const err=document.getElementById('authError');
+  if(u==='admin' && p==='ML2026@++'){
+    document.getElementById('authWall').style.display='none';
+    document.getElementById('appContent').style.display='block';
+    sessionStorage.setItem('ml_auth','1');
+  } else {
+    err.classList.add('show');
+    document.getElementById('authPass').value='';
+    document.getElementById('authPass').focus();
+    setTimeout(()=>err.classList.remove('show'),3000);
+  }
+}
+// Vérifier si déjà connecté dans cette session
+if(sessionStorage.getItem('ml_auth')==='1'){
+  document.addEventListener('DOMContentLoaded',()=>{
+    document.getElementById('authWall').style.display='none';
+    document.getElementById('appContent').style.display='block';
+  });
+}
+document.addEventListener('DOMContentLoaded',()=>{
+  const u=document.getElementById('authUser');
+  if(u) u.focus();
+});
+</script>
 
 </body>
 </html>

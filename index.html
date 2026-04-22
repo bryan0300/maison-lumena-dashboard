@@ -96,6 +96,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
 .badge-or{background:#FAEEDA;color:#633806}
 .badge-argent{background:#E8E7E0;color:#3a3a38}
 .badge-bronze{background:#FDDCC8;color:#4A1B0C}
+.badge-aucun{background:#F3F4F6;color:#6b7280}
 .tbl-wrap{overflow-x:auto}
 table{width:100%;border-collapse:collapse;font-size:12px}
 th{font-size:11px;color:var(--text2);text-align:left;
@@ -672,20 +673,51 @@ function initCharts(data){
 }
 
 // ── CLIENTS ───────────────────────────────────────────────
+// ── CALCUL SCORE FIDÉLITÉ (5 critères / 100 pts) ─────────
+function calcScore(d, now){
+  // 1. Fréquence visites (30 pts)
+  const moisActif = d.lastDate ? Math.max(1, Math.round((now - d.firstDate) / (30*864e5))) : 1;
+  const visitesParMois = d.nb / moisActif;
+  const s1 = Math.min(d.nb / 30, 1) * 20 + Math.min(visitesParMois / 2, 1) * 10;
+
+  // 2. CA + panier moyen (25 pts)
+  const panierMoyen = d.nb > 0 ? d.total / d.nb : 0;
+  const s2 = Math.min(d.total / 1000000, 1) * 15 + Math.min(panierMoyen / 50000, 1) * 10;
+
+  // 3. Récence — pénalité sévère à 60 jours (20 pts)
+  const j = d.lastDate ? Math.round((now - d.lastDate) / 864e5) : 365;
+  const s3 = Math.max(0, 1 - j / 60) * 20;
+
+  // 4. Diversité des services (15 pts)
+  const nbServices = d.services ? d.services.size : 0;
+  const s4 = Math.min(nbServices / 5, 1) * 15;
+
+  // 5. Ancienneté (10 pts)
+  const moisAncien = d.firstDate ? Math.round((now - d.firstDate) / (30*864e5)) : 0;
+  const s5 = Math.min(moisAncien / 12, 1) * 10;
+
+  const total = Math.round(s1 + s2 + s3 + s4 + s5);
+  const badge = total >= 85 ? 'Or' : total >= 65 ? 'Argent' : total >= 40 ? 'Bronze' : 'Aucun';
+  const color = total >= 85 ? '#EF9F27' : total >= 65 ? '#888780' : total >= 40 ? '#D85A30' : '#9ca3af';
+  return { score: total, badge, color };
+}
+
 function clientsMap(data){
   const map={};
   data.forEach(v=>{
     if(!v.cliente||v.cliente==='—')return;
-    if(!map[v.cliente])map[v.cliente]={nb:0,total:0,lastDate:null};
-    map[v.cliente].nb++;map[v.cliente].total+=v.total;
-    if(v.date&&(!map[v.cliente].lastDate||v.date>map[v.cliente].lastDate))map[v.cliente].lastDate=v.date;
+    if(!map[v.cliente])map[v.cliente]={nb:0,total:0,lastDate:null,firstDate:null,services:new Set()};
+    map[v.cliente].nb++;
+    map[v.cliente].total+=v.total;
+    if(v.service&&v.service!=='—') map[v.cliente].services.add(v.service);
+    if(v.date){
+      if(!map[v.cliente].lastDate||v.date>map[v.cliente].lastDate) map[v.cliente].lastDate=v.date;
+      if(!map[v.cliente].firstDate||v.date<map[v.cliente].firstDate) map[v.cliente].firstDate=v.date;
+    }
   });
   const now=new Date();
   return Object.entries(map).map(([nom,d])=>{
-    const j=d.lastDate?Math.round((now-d.lastDate)/864e5):365;
-    const score=Math.round(Math.min(d.nb/20,1)*40+Math.min(d.total/500000,1)*40+Math.max(0,1-j/90)*20);
-    const badge=score>=70?'Or':score>=40?'Argent':'Bronze';
-    const color=score>=70?'#EF9F27':score>=40?'#888780':'#D85A30';
+    const {score,badge,color}=calcScore(d,now);
     const initials=nom.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
     return{nom,nb:d.nb,total:d.total,score,badge,color,initials};
   });
@@ -705,7 +737,7 @@ function renderTopClients(data){
     <div class="client-info"><div class="client-name">${c.nom}</div><div class="client-sub">${sub}</div></div>
     <div style="text-align:right;flex-shrink:0">
       <div style="font-size:13px;font-weight:600">${val}</div>
-      <span class="badge badge-${c.badge.toLowerCase()}">${c.badge}</span>
+      <span class="badge ${c.badge==='Or'?'badge-or':c.badge==='Argent'?'badge-argent':c.badge==='Bronze'?'badge-bronze':'badge-aucun'}">${c.badge}</span>
     </div></div>`;
   return`<div class="card"><div class="card-title">Top clients — Visites</div>${byV.map(c=>row(c,c.nb+' visites',fmt(c.total))).join('')}</div>
     <div class="card"><div class="card-title">Top clients — CA</div>${byC.map(c=>row(c,fmt(c.total),c.nb+' visites')).join('')}</div>`;
@@ -721,10 +753,10 @@ function renderScoreGauges(data){
       <div class="avatar" style="background:${c.color}22;color:${c.color}">${c.initials}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:5px">${c.nom}</div>
-        <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:${c.score}%;background:${c.color}"></div></div>
+        <div class="gauge-bar-wrap"><div class="gauge-bar" style="width:${c.score}%;background:${c.score>=85?'#EF9F27':c.score>=65?'#888780':c.score>=40?'#D85A30':'#9ca3af'}"></div></div>
       </div>
       <span style="font-size:11px;color:var(--text2);min-width:28px;text-align:right">${c.score}</span>
-      <span class="badge badge-${c.badge.toLowerCase()}">${c.badge}</span>
+      <span class="badge ${c.badge==='Or'?'badge-or':c.badge==='Argent'?'badge-argent':c.badge==='Bronze'?'badge-bronze':'badge-aucun'}">${c.badge}</span>
     </div>`).join('')}
     </div></div>`;
 }
@@ -798,7 +830,7 @@ function renderClientCards(data){
   const cm = buildClientMapFull(data);
   if(!cm.length) return `<div class="card"><div class="empty-state"><div class="icon">👤</div><p>Aucun client dans cette période</p></div></div>`;
   return `<div class="clients-grid">${cm.sort((a,b)=>b.nb-a.nb).map((c,i)=>{
-    const bc = c.badge==='Or'?'badge-or':c.badge==='Argent'?'badge-argent':'badge-bronze';
+    const bc = c.badge==='Or'?'badge-or':c.badge==='Argent'?'badge-argent':c.badge==='Bronze'?'badge-bronze':'badge-aucun';
     const lastDate = c.lastDate ? c.lastDate.toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
     return `<div class="client-card" onclick="openDrawer('${c.nom.replace(/'/g,"\'")}')">
       <div class="av">${c.initials}</div>
@@ -814,17 +846,19 @@ function buildClientMapFull(data){
   const map={};
   data.forEach(v=>{
     if(!v.cliente||v.cliente==='—') return;
-    if(!map[v.cliente]) map[v.cliente]={nb:0,total:0,lastDate:null,visites:[]};
+    if(!map[v.cliente]) map[v.cliente]={nb:0,total:0,lastDate:null,firstDate:null,services:new Set(),visites:[]};
     map[v.cliente].nb++;
     map[v.cliente].total+=v.total;
     map[v.cliente].visites.push(v);
-    if(v.date&&(!map[v.cliente].lastDate||v.date>map[v.cliente].lastDate)) map[v.cliente].lastDate=v.date;
+    if(v.service&&v.service!=='—') map[v.cliente].services.add(v.service);
+    if(v.date){
+      if(!map[v.cliente].lastDate||v.date>map[v.cliente].lastDate) map[v.cliente].lastDate=v.date;
+      if(!map[v.cliente].firstDate||v.date<map[v.cliente].firstDate) map[v.cliente].firstDate=v.date;
+    }
   });
   const now=new Date();
   return Object.entries(map).map(([nom,d])=>{
-    const j=d.lastDate?Math.round((now-d.lastDate)/864e5):365;
-    const score=Math.round(Math.min(d.nb/20,1)*40+Math.min(d.total/500000,1)*40+Math.max(0,1-j/90)*20);
-    const badge=score>=70?'Or':score>=40?'Argent':'Bronze';
+    const {score,badge}=calcScore(d,now);
     const initials=nom.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase()||'?';
     return{nom,nb:d.nb,total:d.total,score,badge,initials,lastDate:d.lastDate,visites:d.visites.sort((a,b)=>!a.date?1:!b.date?-1:b.date-a.date)};
   });
@@ -839,7 +873,7 @@ function openDrawer(nom){
   // Header
   document.getElementById('drawerAv').textContent=client.initials;
   document.getElementById('drawerName').textContent=client.nom;
-  const bc=client.badge==='Or'?'badge-or':client.badge==='Argent'?'badge-argent':'badge-bronze';
+  const bc=client.badge==='Or'?'badge-or':client.badge==='Argent'?'badge-argent':client.badge==='Bronze'?'badge-bronze':'badge-aucun';
   document.getElementById('drawerSub').innerHTML=
     `${client.nb} visite${client.nb>1?'s':''} &bull; ${fmt(client.total)} &bull; <span class="badge ${bc}" style="font-size:11px">${client.badge}</span>`;
 
@@ -921,7 +955,7 @@ function exportCSV(){
   a.click();
 }
 
-setTimeout(()=>loadData(),400);
+// loadData() est appelé après connexion uniquement
 </script>
 
 <!-- DRAWER FICHE CLIENT -->
@@ -945,9 +979,10 @@ function checkAuth(){
   const p=document.getElementById('authPass').value;
   const err=document.getElementById('authError');
   if(u==='admin' && p==='ML2026@++'){
+    sessionStorage.setItem('ml_auth','1');
     document.getElementById('authWall').style.display='none';
     document.getElementById('appContent').style.display='block';
-    sessionStorage.setItem('ml_auth','1');
+    setTimeout(()=>loadData(),300);
   } else {
     err.classList.add('show');
     document.getElementById('authPass').value='';
@@ -955,14 +990,13 @@ function checkAuth(){
     setTimeout(()=>err.classList.remove('show'),3000);
   }
 }
-// Vérifier si déjà connecté dans cette session
-if(sessionStorage.getItem('ml_auth')==='1'){
-  document.addEventListener('DOMContentLoaded',()=>{
-    document.getElementById('authWall').style.display='none';
-    document.getElementById('appContent').style.display='block';
-  });
-}
-document.addEventListener('DOMContentLoaded',()=>{
+
+// Toujours afficher le mur d'auth au chargement — jamais de bypass automatique
+window.addEventListener('DOMContentLoaded',()=>{
+  // Vider toute session précédente pour forcer la connexion à chaque ouverture
+  sessionStorage.removeItem('ml_auth');
+  document.getElementById('authWall').style.display='flex';
+  document.getElementById('appContent').style.display='none';
   const u=document.getElementById('authUser');
   if(u) u.focus();
 });

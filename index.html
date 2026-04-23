@@ -1128,9 +1128,10 @@ function renderEmployees(data){
     document.getElementById('empZone').innerHTML=`<div class="card"><div class="empty-state"><span class="icon">👩‍💼</span><p>Aucune donnée employée dans cette période</p></div></div>`;return;
   }
   const maxCA=entries[0][1].total||1;
+  const totalCA=entries.reduce((s,[,d])=>s+d.total,0)||1;
   const rows=entries.map(([n,d],i)=>{
-    const comm=Math.round(d.total*0.1);
     const pct=Math.round(d.total/maxCA*100);
+    const share=Math.round(d.total/totalCA*100);
     return`<tr>
       <td><span class="emp-rank ${i<3?'top':''}">${i+1}</span></td>
       <td style="font-weight:600">${n}</td>
@@ -1138,13 +1139,17 @@ function renderEmployees(data){
       <td style="font-weight:600">${fmt(d.total)}</td>
       <td style="color:var(--green)">${fmt(d.paye)}</td>
       <td style="color:var(--amber)">${fmt(d.total-d.paye)}</td>
-      <td style="color:var(--violet);font-weight:600">${fmt(comm)}</td>
-      <td><div class="perf-bar-wrap"><div class="perf-bar" style="width:${pct}%"></div></div></td>
+      <td>
+        <div style="display:flex;align-items:center;gap:8px">
+          <div class="perf-bar-wrap"><div class="perf-bar" style="width:${pct}%"></div></div>
+          <span style="font-size:11px;font-weight:700;color:var(--violet);min-width:32px">${share}%</span>
+        </div>
+      </td>
     </tr>`;
   }).join('');
   document.getElementById('empZone').innerHTML=`<div class="card"><div class="tbl-wrap">
     <table>
-      <thead><tr><th>#</th><th>Employée</th><th>Prestations</th><th>CA Total</th><th>Encaissé</th><th>En attente</th><th>Commission (10%)</th><th>Performance</th></tr></thead>
+      <thead><tr><th>#</th><th>Employée</th><th>Prestations</th><th>CA Total</th><th>Encaissé</th><th>En attente</th><th>Performance</th></tr></thead>
       <tbody>${rows}</tbody>
     </table>
   </div></div>`;

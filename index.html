@@ -6,7 +6,25 @@
 <title>Maison Lumena — Dashboard</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@400;600;700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+// Chargement Chart.js avec 3 CDN en fallback
+(function(){
+  var cdns=[
+    'https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js',
+    'https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js',
+    'https://unpkg.com/chart.js@4.4.1/dist/chart.umd.js'
+  ];
+  var i=0;
+  function tryLoad(){
+    if(i>=cdns.length)return;
+    var s=document.createElement('script');
+    s.src=cdns[i++];
+    s.onerror=function(){console.warn('CDN échoué, essai suivant…');tryLoad();};
+    document.head.appendChild(s);
+  }
+  tryLoad();
+})();
+</script>
 <style>
 /* ═══════════════════════════════════════════════════
    RESET & TOKENS
@@ -785,17 +803,39 @@ function parseAmt(raw){
 function normalizeVisites(rows){
   if(rows.length<1)return[];
   const hdr=rows[0].map(h=>h.toLowerCase().replace(/[^a-z0-9]/g,''));
-  const idx=(...keys)=>{for(const k of keys){const i=hdr.findIndex(h=>h.includes(k));if(i>=0)return i;}return -1;};
-  const iDate=idx('date'),iCliente=idx('cliente','client','nom'),
-        iService=idx('service','prestation'),iEmployee=idx('employe','employee'),
-        iTotal=idx('paniertotal','total','panier'),iPrix=idx('prixservice','prix'),
-        iStatut=idx('statut','status');
-  return rows.slice(1).map(r=>{
-    const g=i=>(i>=0&&i<r.length)?r[i]:'';
+  console.log('[ML] Headers détectés:', hdr);
+
+  // Détection flexible : correspondance exacte d'abord, puis partielle
+  const idx=(...keys)=>{
+    for(const k of keys){
+      // Correspondance exacte
+      let i=hdr.findIndex(h=>h===k); if(i>=0)return i;
+      // Correspondance partielle
+      i=hdr.findIndex(h=>h.includes(k)); if(i>=0)return i;
+    }
+    return -1;
+  };
+
+  const iDate   = idx('date','datevisite','datedelavisite');
+  const iCliente= idx('nomcliente','nomdelaclientenomclient','nomprenom','cliente','nomclient','client','nomdecl','nom');
+  const iService= idx('servicedemande','serviceprincipal','service','prestation');
+  const iEmployee= idx('employeeresponsable','employee','employe','responsable');
+  const iTotal  = idx('paniertotal','total','montant','panier');
+  const iPrix   = idx('prixduserviceprincipal','prixservice','prix');
+  const iStatut = idx('statutdelaprestation','statut','status','etat');
+
+  console.log('[ML] Colonnes → date:'+iDate+' cliente:'+iCliente+' service:'+iService+' employee:'+iEmployee+' total:'+iTotal+' statut:'+iStatut);
+
+  const result = rows.slice(1).map(r=>{
+    const g=i=>(i>=0&&i<r.length)?(r[i]||''):'';
     const dateStr=g(iDate);let dateObj=null;
     if(dateStr){
-      const p=dateStr.match(/(\d{1,4})[\/\-\.](\d{1,2})[\/\-\.](\d{2,4})/);
-      if(p){let y=parseInt(p[1]),m=parseInt(p[2])-1,d=parseInt(p[3]);if(y<100)y+=2000;if(y>1900&&y<2200)dateObj=new Date(y,m,d);}
+      // Format DD/MM/YYYY (français)
+      let p=dateStr.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+      if(p){dateObj=new Date(parseInt(p[3]),parseInt(p[2])-1,parseInt(p[1]));}
+      // Format YYYY-MM-DD (ISO)
+      if(!dateObj){p=dateStr.match(/^(\d{4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);if(p)dateObj=new Date(parseInt(p[1]),parseInt(p[2])-1,parseInt(p[3]));}
+      // Fallback
       if(!dateObj){const d=new Date(dateStr);if(!isNaN(d.getTime()))dateObj=d;}
     }
     const rawS=(g(iStatut)||'').toLowerCase().replace(/[^a-z]/g,'');
@@ -803,10 +843,27 @@ function normalizeVisites(rows){
     if(rawS.includes('pay')&&!rawS.includes('non')&&!rawS.includes('att'))statut='paye';
     else if(rawS.includes('att')||rawS.includes('cours'))statut='attente';
     else if(rawS.includes('non')||rawS.includes('imp'))statut='impaye';
-    const total=parseAmt(g(iTotal)||g(iPrix)||'0');
+
+    // Fallback total : essaie plusieurs colonnes
+    const totalRaw=g(iTotal)||g(iPrix)||'0';
+    const total=parseAmt(totalRaw);
     const prixSvc=parseAmt(g(iPrix)||'0');
-    return{date:dateObj,dateStr,cliente:g(iCliente)||'—',service:g(iService)||'—',employee:g(iEmployee)||'—',statut,total,prixSvc};
+
+    // Fallback cliente : si colonne non trouvée, cherche la 1ère colonne non-numérique avec du texte
+    let cliente=iCliente>=0?g(iCliente):'';
+    if(!cliente&&iCliente<0){
+      // Cherche dans les premières colonnes un nom probable
+      for(let ci=1;ci<Math.min(r.length,6);ci++){
+        if(r[ci]&&r[ci].length>2&&isNaN(r[ci])&&!r[ci].includes('/')&&!r[ci].includes('-')){
+          cliente=r[ci];break;
+        }
+      }
+    }
+    return{date:dateObj,dateStr,cliente:cliente||'—',service:g(iService)||'—',employee:g(iEmployee)||'—',statut,total,prixSvc};
   }).filter(v=>v.cliente!=='—'||v.total>0);
+
+  console.log('[ML] Lignes normalisées:', result.length, '| Ex cliente:', result[0]?.cliente, '| Ex service:', result[0]?.service);
+  return result;
 }
 
 function normalizeClients(rows){
@@ -961,7 +1018,7 @@ function renderKPIs(k){
     <div class="kpi-card amber">
       <div class="kpi-icon">⏳</div><div class="kpi-label">En attente</div>
       <div class="kpi-val">${fmt(k.attente)}</div>
-      <div class="kpi-sub">${data&&FILTERED.filter(v=>v.statut==='attente').length} dossier(s)</div>
+      <div class="kpi-sub">${FILTERED.filter(v=>v.statut==='attente').length} dossier(s)</div>
     </div>
     <div class="kpi-card red">
       <div class="kpi-icon">⚠️</div><div class="kpi-label">Non payé</div>
@@ -987,6 +1044,12 @@ function renderKPIs(k){
 const SVC_COLORS=['#7C4DBC','#27a84b','#f59e0b','#ef4444','#1D9E75','#E91E8C','#1A73E8','#FF6B35','#9C27B0','#00BCD4'];
 
 function initCharts(data){
+  // Attend que Chart.js soit chargé (fallback CDN peut prendre un peu plus de temps)
+  if(typeof Chart==='undefined'){
+    console.warn('[ML] Chart.js pas encore chargé, réessai dans 500ms…');
+    setTimeout(()=>initCharts(data),500);
+    return;
+  }
   Object.values(CHARTS).forEach(c=>c.destroy());CHARTS={};
   if(!data.length){
     ['pieChart','lineChart','barChart','finChart'].forEach(id=>{
@@ -1116,7 +1179,10 @@ function renderVisitesList(data){
 // ─── SCORE GAUGES ─────────────────────────────────────────
 function renderScoreGauges(data){
   const cm=buildClientMapFull(data).sort((a,b)=>b.score-a.score).slice(0,10);
-  if(!cm.length){document.getElementById('scoreZone').innerHTML='';return;}
+  if(!cm.length){
+    document.getElementById('scoreZone').innerHTML=`<div class="card"><div class="empty-state"><span class="icon">🏅</span><p>Les scores apparaîtront dès que les fiches visites seront remplies avec des noms de clientes.</p></div></div>`;
+    return;
+  }
   const half=Math.ceil(cm.length/2);
   const col=arr=>`<div>${arr.map(c=>`<div class="gauge-row">
     <div class="avatar" style="background:${c.color}18;color:${c.color};font-size:10px">${c.initials}</div>
@@ -1136,7 +1202,10 @@ function renderScoreGauges(data){
 // ─── TOP CLIENTS ──────────────────────────────────────────
 function renderTopClients(data){
   const cl=buildClientMapFull(data);
-  if(!cl.length){document.getElementById('topZone').innerHTML='';return;}
+  if(!cl.length){
+    document.getElementById('topZone').innerHTML=`<div class="card"><div class="empty-state"><span class="icon">👑</span><p>Aucune cliente détectée dans cette période.</p></div></div>`;
+    return;
+  }
   const byV=[...cl].sort((a,b)=>b.nb-a.nb).slice(0,6);
   const byC=[...cl].sort((a,b)=>b.total-a.total).slice(0,6);
   const row=(c,val,sub)=>`<div class="client-row">

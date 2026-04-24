@@ -1128,10 +1128,9 @@ function renderEmployees(data){
     document.getElementById('empZone').innerHTML=`<div class="card"><div class="empty-state"><span class="icon">👩‍💼</span><p>Aucune donnée employée dans cette période</p></div></div>`;return;
   }
   const maxCA=entries[0][1].total||1;
-  const totalCA=entries.reduce((s,[,d])=>s+d.total,0)||1;
   const rows=entries.map(([n,d],i)=>{
     const pct=Math.round(d.total/maxCA*100);
-    const share=Math.round(d.total/totalCA*100);
+    const share=d.total>0?Math.round(d.paye/d.total*100):0;
     return`<tr>
       <td><span class="emp-rank ${i<3?'top':''}">${i+1}</span></td>
       <td style="font-weight:600">${n}</td>
